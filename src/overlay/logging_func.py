@@ -5,6 +5,7 @@ import time
 from typing import Any, Callable, Dict
 
 CONFIG_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AoE4_Overlay_Config")
+
 LOG_FILE = os.path.join(CONFIG_FOLDER, 'overlay.log')
 MATCH_LOG_FILE = os.path.join(CONFIG_FOLDER, 'matches.log')
 
