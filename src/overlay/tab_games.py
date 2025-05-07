@@ -65,8 +65,14 @@ class MatchEntry:
         mode = QtWidgets.QLabel(match_data['kind'])
 
         # Result
-        result = QtWidgets.QLabel(main_player_data['result'].capitalize(
-        ) if main_player_data and main_player_data['result'] else "?")
+        result_text = main_player_data['result'].upper() if main_player_data and main_player_data['result'] else "?"
+        result = QtWidgets.QLabel(result_text)
+
+        # Set color based on result
+        if result_text == "WIN":
+            result.setStyleSheet("color: green;")
+        elif result_text == "LOSS":
+            result.setStyleSheet("color: red;")
 
         # ELO change
         diff = main_player_data[
