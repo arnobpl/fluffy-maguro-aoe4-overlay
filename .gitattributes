@@ -1,0 +1,13 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Explicitly handle certain extensions
+*.bat text eol=crlf
+*.sh  text eol=lf
+*.py  text eol=lf
+*.js  text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md  text eol=lf
+*.yml text eol=lf
