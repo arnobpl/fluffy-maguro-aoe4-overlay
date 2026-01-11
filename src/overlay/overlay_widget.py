@@ -1,7 +1,11 @@
-from typing import Any, Dict
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from overlay.aoe4_data import mode_data
 from overlay.custom_widgets import OverlayWidget, VerticalLabel
 from overlay.helper_func import file_path, zeroed
 from overlay.settings import settings
@@ -32,6 +36,79 @@ def set_country_flag(country_code: str, widget: QtWidgets.QLabel):
     widget.setPixmap(pixmap)
 
 
+def _pixmap_cache_key(path: str, size: QtCore.QSize) -> str:
+    return f"{path}|{size.width()}x{size.height()}"
+
+
+def set_league_icon(icon_path: str, widget: QtWidgets.QLabel):
+    """Sets league pixmap to a widget. Handles caching and smooth scaling."""
+    key = _pixmap_cache_key(icon_path, widget.size())
+    if key in PIXMAP_CACHE:
+        widget.setPixmap(PIXMAP_CACHE[key])
+        return
+    pixmap = QtGui.QPixmap(icon_path)
+    pixmap = pixmap.scaled(widget.width(), widget.height(), QtCore.Qt.KeepAspectRatio,
+                           QtCore.Qt.SmoothTransformation)
+    PIXMAP_CACHE[key] = pixmap
+    widget.setPixmap(pixmap)
+
+
+LEAGUE_ELO_RANGES = (
+    # (min_inclusive, max_exclusive, league_file_stem)
+    (0, 400, "bronze_1"),
+    (400, 450, "bronze_2"),
+    (450, 500, "bronze_3"),
+    (500, 600, "silver_1"),
+    (600, 650, "silver_2"),
+    (650, 700, "silver_3"),
+    (700, 800, "gold_1"),
+    (800, 900, "gold_2"),
+    (900, 1000, "gold_3"),
+    (1000, 1100, "platinum_1"),
+    (1100, 1150, "platinum_2"),
+    (1150, 1200, "platinum_3"),
+    (1200, 1300, "diamond_1"),
+    (1300, 1350, "diamond_2"),
+    (1350, 1400, "diamond_3"),
+    (1400, 1500, "conquerer_1"),
+    (1500, 1600, "conquerer_2"),
+    (1600, None, "conquerer_3"),
+)
+
+
+def parse_elo(rating_text: str) -> Optional[int]:
+    """Best-effort conversion of rating text to an int Elo.
+
+    Returns None when Elo is not available (empty, non-numeric, or <= 0).
+    """
+    if not rating_text:
+        return None
+    m = re.search(r"\d+", str(rating_text))
+    if not m:
+        return None
+    try:
+        elo = int(m.group(0))
+    except ValueError:
+        return None
+    return elo if elo > 0 else None
+
+
+def league_icon_path(elo: Optional[int], *, is_team_game: bool) -> str:
+    """Maps Elo to the appropriate league icon file path."""
+    prefix = "team_" if is_team_game else ""
+    if elo is None:
+        return file_path(f"img/leagues/{prefix}unranked.png")
+
+    for min_elo, max_elo, league in LEAGUE_ELO_RANGES:
+        if elo < min_elo:
+            continue
+        if max_elo is None or elo < max_elo:
+            return file_path(f"img/leagues/{prefix}{league}.png")
+
+    # Fallback, should not be reached
+    return file_path(f"img/leagues/{prefix}unranked.png")
+
+
 class PlayerWidget:
     """ Player widget shown on the overlay"""
 
@@ -53,7 +130,7 @@ class PlayerWidget:
 
         offset = 0
         for column, widget in enumerate(
-            (self.flag, self.name, self.country, self.rating, self.rank, self.winrate,
+            (self.flag, self.name, self.country, self.rating_container, self.rank, self.winrate,
              self.wins, self.losses, self.civ_games, self.civ_winrate,
              self.civ_median_wins)):
 
@@ -67,10 +144,24 @@ class PlayerWidget:
         self.flag.setFixedSize(QtCore.QSize(60, 30))
         self.country = QtWidgets.QLabel()
         self.country.setFixedSize(QtCore.QSize(25,14))
-        self.country.setScaledContents(True)  
+        self.country.setScaledContents(True)
 
         self.name = QtWidgets.QLabel()
+
+        # Rating with league icon
+        self.league = QtWidgets.QLabel()
+        # Square size so the icon stays readable; scaled with aspect ratio
+        self.league.setFixedSize(QtCore.QSize(26, 26))
+
         self.rating = QtWidgets.QLabel()
+        self.rating_container = QtWidgets.QWidget()
+        rating_layout = QtWidgets.QHBoxLayout(self.rating_container)
+        rating_layout.setContentsMargins(0, 0, 0, 0)
+        rating_layout.setSpacing(5)
+        rating_layout.addWidget(self.league)
+        rating_layout.addWidget(self.rating)
+        rating_layout.addStretch(1)
+
         self.rank = QtWidgets.QLabel()
         self.winrate = QtWidgets.QLabel()
         self.wins = QtWidgets.QLabel()
@@ -78,12 +169,12 @@ class PlayerWidget:
         self.civ_games = QtWidgets.QLabel()
         self.civ_winrate = QtWidgets.QLabel()
         self.civ_median_wins = QtWidgets.QLabel()
-         
+
 
     def show(self, show: bool = True):
         self.visible = show
         """ Shows or hides all widgets in this class """
-        for widget in (self.flag, self.name, self.country, self.rating, self.rank,
+        for widget in (self.flag, self.name, self.country, self.rating_container, self.rank,
                        self.winrate, self.wins, self.losses, self.civ_games,
                        self.civ_winrate, self.civ_median_wins):
             widget.show() if show else widget.hide()
@@ -106,12 +197,12 @@ class PlayerWidget:
     def update_country_flag(self, country_code: str):
         set_country_flag(country_code, self.country)
 
-    def update_player(self, player_data: Dict[str, Any]):
+    def update_player(self, player_data: Dict[str, Any], *, is_team_game: bool = False):
         # Flag
         self.civ = player_data['civ']
         self.update_flag()
 
-        self.update_country_flag(player_data['country']) 
+        self.update_country_flag(player_data['country'])
         # Indicate team with background color
         self.team = zeroed(player_data['team'])
         self.update_name_color()
@@ -119,6 +210,12 @@ class PlayerWidget:
         # Fill the rest
         self.name.setText(player_data['name'])
         self.rating.setText(player_data['rating'])
+
+        # League icon next to Elo
+        elo = parse_elo(player_data.get('rating', ''))
+        icon_path = league_icon_path(elo, is_team_game=is_team_game)
+        set_league_icon(icon_path, self.league)
+
         self.rank.setText(player_data['rank'])
         self.winrate.setText(player_data['winrate'])
         self.wins.setText(str(player_data['wins']))
@@ -254,12 +351,20 @@ class AoEOverlay(OverlayWidget):
         self.map.setText(game_data['map'])
         [p.show(False) for p in self.players]
 
+        # Use different league icon sets for solo (1v1) vs team (2v2+)
+        mode_id = game_data.get('mode')
+        try:
+            mode_id_int = int(mode_id)
+        except Exception:
+            mode_id_int = None
+        is_team_game = mode_data.get(mode_id_int, "1v1") != "1v1"
+
         show_civ_stats = False
         for i, player in enumerate(game_data['players']):
             if i >= len(self.players):
                 break
 
-            self.players[i].update_player(player)
+            self.players[i].update_player(player, is_team_game=is_team_game)
 
             if player['civ_games']:
                 show_civ_stats = True

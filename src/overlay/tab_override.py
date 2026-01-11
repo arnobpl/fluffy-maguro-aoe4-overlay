@@ -44,7 +44,20 @@ class InnerPlayer(PlayerWidget):
         self.team_cb.addItem("No team")
         for i in range(1, 3):
             self.team_cb.addItem(f"Team {i}")
+
+        # Rating with league icon (editable rating field)
+        self.league = QtWidgets.QLabel()
+        self.league.setFixedSize(QtCore.QSize(26, 26))
+
         self.rating = QtWidgets.QLineEdit()
+        self.rating_container = QtWidgets.QWidget()
+        rating_layout = QtWidgets.QHBoxLayout(self.rating_container)
+        rating_layout.setContentsMargins(0, 0, 0, 0)
+        rating_layout.setSpacing(5)
+        rating_layout.addWidget(self.league)
+        rating_layout.addWidget(self.rating)
+        rating_layout.addStretch(1)
+
         self.country = QtWidgets.QLabel()
         self.rank = QtWidgets.QLineEdit()
         self.winrate = QtWidgets.QLineEdit()
@@ -97,10 +110,10 @@ class InnerPlayer(PlayerWidget):
     def update_flag(self):
         self.flag.setCurrentText(self.civ)
 
-    def update_player(self, player_data: Dict[str, Any]):
+    def update_player(self, player_data: Dict[str, Any], *, is_team_game: bool = False):
         # We don't want the automatic update to look like the user made the change
         self.disconnect_changes()
-        super().update_player(player_data)
+        super().update_player(player_data, is_team_game=is_team_game)
         self.team_cb.setCurrentIndex(self.team)
         self.connect_to_function(self.callable)
 
