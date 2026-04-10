@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from overlay.aoe4_data import mode_data
 from overlay.custom_widgets import OverlayWidget, VerticalLabel
 from overlay.helper_func import file_path, zeroed
 from overlay.settings import settings
@@ -93,20 +92,21 @@ def parse_elo(rating_text: str) -> Optional[int]:
     return elo if elo > 0 else None
 
 
-def league_icon_path(elo: Optional[int], *, is_team_game: bool) -> str:
-    """Maps Elo to the appropriate league icon file path."""
-    prefix = "team_" if is_team_game else ""
+def league_icon_path(elo: Optional[int]) -> str:
+    """Maps Elo to the appropriate league SVG icon file path."""
+    prefix = "solo_"
+
     if elo is None:
-        return file_path(f"img/leagues/{prefix}unranked.png")
+        return file_path(f"img/leagues/{prefix}unranked.svg")
 
     for min_elo, max_elo, league in LEAGUE_ELO_RANGES:
         if elo < min_elo:
             continue
         if max_elo is None or elo < max_elo:
-            return file_path(f"img/leagues/{prefix}{league}.png")
+            return file_path(f"img/leagues/{prefix}{league.replace('conquerer', 'conqueror')}.svg")
 
     # Fallback, should not be reached
-    return file_path(f"img/leagues/{prefix}unranked.png")
+    return file_path(f"img/leagues/{prefix}unranked.svg")
 
 
 class PlayerWidget:
@@ -197,7 +197,7 @@ class PlayerWidget:
     def update_country_flag(self, country_code: str):
         set_country_flag(country_code, self.country)
 
-    def update_player(self, player_data: Dict[str, Any], *, is_team_game: bool = False):
+    def update_player(self, player_data: Dict[str, Any]):
         # Flag
         self.civ = player_data['civ']
         self.update_flag()
@@ -213,7 +213,7 @@ class PlayerWidget:
 
         # League icon next to Elo
         elo = parse_elo(player_data.get('rating', ''))
-        icon_path = league_icon_path(elo, is_team_game=is_team_game)
+        icon_path = league_icon_path(elo)
         set_league_icon(icon_path, self.league)
 
         self.rank.setText(player_data['rank'])
@@ -351,20 +351,12 @@ class AoEOverlay(OverlayWidget):
         self.map.setText(game_data['map'])
         [p.show(False) for p in self.players]
 
-        # Use different league icon sets for solo (1v1) vs team (2v2+)
-        mode_id = game_data.get('mode')
-        try:
-            mode_id_int = int(mode_id)
-        except Exception:
-            mode_id_int = None
-        is_team_game = mode_data.get(mode_id_int, "1v1") != "1v1"
-
         show_civ_stats = False
         for i, player in enumerate(game_data['players']):
             if i >= len(self.players):
                 break
 
-            self.players[i].update_player(player, is_team_game=is_team_game)
+            self.players[i].update_player(player)
 
             if player['civ_games']:
                 show_civ_stats = True

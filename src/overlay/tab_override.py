@@ -110,10 +110,10 @@ class InnerPlayer(PlayerWidget):
     def update_flag(self):
         self.flag.setCurrentText(self.civ)
 
-    def update_player(self, player_data: Dict[str, Any], *, is_team_game: bool = False):
+    def update_player(self, player_data: Dict[str, Any]):
         # We don't want the automatic update to look like the user made the change
         self.disconnect_changes()
-        super().update_player(player_data, is_team_game=is_team_game)
+        super().update_player(player_data)
         self.team_cb.setCurrentIndex(self.team)
         self.connect_to_function(self.callable)
 
