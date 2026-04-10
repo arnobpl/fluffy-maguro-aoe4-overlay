@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from overlay.logging_func import CONFIG_FOLDER, get_logger
 
@@ -12,16 +12,16 @@ class _Settings:
 
     def __init__(self):
         self.websocket_port: int = 7307
-        self.send_email_logs: bool = True
         self.log_matches: bool = True
         self.interval: int = 15
         self.app_width: int = 900
         self.app_height: int = 600
+        self.app_geometry: Optional[str] = None
         self.steam_id: Optional[int] = None
         self.profile_id: Optional[int] = None
         self.player_name: Optional[str] = None
         self.overlay_hotkey: str = ""
-        self.overlay_geometry: Optional[List[int]] = None
+        self.overlay_geometry: Optional[Union[str, List[int]]] = None
         self.font_size: int = 12
         self.max_games_history: int = 100
         self.civ_stats_color: str = "#BC8AEA"
@@ -42,9 +42,7 @@ class _Settings:
         self.bo_color_background: list = [30, 30, 30]  # background RGB color
         self.bo_font_police: str = 'Arial'  # police font
         self.bo_opacity: float = 0.75  # opacity of the window
-        self.bo_upper_right_position: list = [
-            1870, 70
-        ]  # position for the upper right corner
+        self.bo_upper_right_position: Optional[List[int]] = None  # position for the upper right corner
         self.bo_image_height: int = 30  # height of the images
         self.bo_border_size: int = 15  # size of the borders
         self.bo_vertical_spacing: int = 10  # vertical space between the BO lines
@@ -87,8 +85,10 @@ class _Settings:
             logger.warning("Failed to parse config file")
             return
 
-        for key in data:
-            setattr(self, key, data[key])
+        valid_keys = set(self.__dict__)
+        for key, value in data.items():
+            if key in valid_keys:
+                setattr(self, key, value)
 
     def save(self):
         """ Saves configuration to app data"""

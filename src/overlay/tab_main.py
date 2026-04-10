@@ -14,11 +14,9 @@ from overlay.logging_func import get_logger, log_match
 from overlay.settings import settings
 from overlay.tab_build_orders import BoTab
 from overlay.tab_games import MatchHistoryTab
-from overlay.tab_graphs import GraphTab
 from overlay.tab_override import OverrideTab
 from overlay.tab_random import RandomTab
 from overlay.tab_settings import SettingsTab
-from overlay.tab_stats import StatsTab
 from overlay.websocket import Websocket_manager
 from overlay.worker import scheldule
 
@@ -36,9 +34,7 @@ class TabWidget(QtWidgets.QTabWidget):
         self.prevent_overlay_update: bool = False
 
         self.games_tab = MatchHistoryTab(self)
-        # self.graph_tab = GraphTab(self)
         self.random_tab = RandomTab(self)
-        # self.stats_tab = StatsTab(self)
         self.build_order_tab = BoTab(self)
         self.override_tab = OverrideTab(self)
         self.override_tab.data_override.connect(self.override_event)
@@ -48,8 +44,6 @@ class TabWidget(QtWidgets.QTabWidget):
 
         self.addTab(self.settigns_tab, "Settings")
         self.addTab(self.games_tab, "Games")
-        # self.addTab(self.graph_tab, "Rating")
-        # self.addTab(self.stats_tab, "Stats")
         self.addTab(self.build_order_tab, "Build orders")
         self.addTab(self.random_tab, "Randomize")
         self.addTab(self.override_tab, "Override")
@@ -66,15 +60,14 @@ class TabWidget(QtWidgets.QTabWidget):
         self.send_ws_colors()
         self.check_waking()
 
-    def closeEvent(self, _):
+    def closeEvent(self, event):
         """Function called when closing the widget."""
+        self.settigns_tab.close()
         self.build_order_tab.close()
+        super().closeEvent(event)
 
     def new_profile_found(self):
         self.api_checker.reset()
-        # self.graph_tab.run_update()
-        # self.stats_tab.run_mode_update()
-        # self.stats_tab.clear_match_data()
         self.games_tab.clear_games()
         self.update_with_match_history_data(10000)
         self.parent().update_title(settings.player_name)
@@ -89,7 +82,6 @@ class TabWidget(QtWidgets.QTabWidget):
             logger.warning("No match history data")
             return
         self.settigns_tab.message("")
-        # self.stats_tab.update_other_stats(match_history)
         self.games_tab.update_widgets(match_history)
 
     def run_new_game_check(self, delayed_seconds: int = 0):
@@ -107,8 +99,6 @@ class TabWidget(QtWidgets.QTabWidget):
         elif "new_rating" in game_data:
             logger.info(
                 f"Game finished (rating_timestamp: {game_data['timestamp']})")
-            # self.graph_tab.run_update()
-            # self.stats_tab.run_mode_update()
             self.update_with_match_history_data(2)
 
         elif 'server_down' in game_data:

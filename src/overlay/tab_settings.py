@@ -103,7 +103,7 @@ class SettingsTab(QtWidgets.QWidget):
 
         self.font_size_combo = QtWidgets.QComboBox()
         for i in range(1, 50):
-            self.font_size_combo.addItem(f"{i} pt")
+            self.font_size_combo.addItem(f"{i} px")
         self.font_size_combo.setCurrentIndex(settings.font_size - 1)
         self.font_size_combo.currentIndexChanged.connect(
             self.font_size_changed)
@@ -140,6 +140,10 @@ class SettingsTab(QtWidgets.QWidget):
 
         if settings.steam_id or settings.profile_id:
             self.new_profile.emit()
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.overlay_widget.close()
+        super().closeEvent(event)
 
     def init_hotkeys(self):
         if settings.overlay_hotkey:

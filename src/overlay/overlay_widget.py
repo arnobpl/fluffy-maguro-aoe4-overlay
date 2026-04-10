@@ -12,6 +12,42 @@ from overlay.settings import settings
 PIXMAP_CACHE = {}
 
 
+def _default_overlay_rect() -> QtCore.QRect:
+    screen = QtGui.QGuiApplication.primaryScreen()
+    available = screen.availableGeometry() if screen else QtCore.QRect(
+        0, 0, 1920, 1080)
+    width = min(700, available.width())
+    height = min(400, available.height())
+    rect = QtCore.QRect(0, 0, width, height)
+    rect.moveTopRight(available.topRight() + QtCore.QPoint(-20, 20))
+    return rect
+
+
+def _legacy_overlay_rect() -> Optional[QtCore.QRect]:
+    geometry = settings.overlay_geometry
+    if not isinstance(geometry, list) or len(geometry) != 4:
+        return None
+    try:
+        x, y, width, height = (int(value) for value in geometry)
+    except (TypeError, ValueError):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return QtCore.QRect(x, y, width, height)
+
+
+def _restore_saved_geometry(widget: QtWidgets.QWidget):
+    geometry = settings.overlay_geometry
+    if isinstance(geometry, str):
+        widget.restoreGeometry(
+            QtCore.QByteArray.fromBase64(geometry.encode("ascii")))
+        return
+
+    legacy_rect = _legacy_overlay_rect()
+    if legacy_rect is not None:
+        widget.setGeometry(legacy_rect)
+
+
 def set_pixmap(civ: str, widget: QtWidgets.QWidget):
     """ Sets civ pixmap to a widget. Handles caching."""
     if civ in PIXMAP_CACHE:
@@ -154,13 +190,16 @@ class PlayerWidget:
         self.league.setFixedSize(QtCore.QSize(26, 26))
 
         self.rating = QtWidgets.QLabel()
+        self.rating.setSizePolicy(QtWidgets.QSizePolicy.Fixed,
+                                  QtWidgets.QSizePolicy.Preferred)
         self.rating_container = QtWidgets.QWidget()
+        self.rating_container.setSizePolicy(QtWidgets.QSizePolicy.Fixed,
+                                            QtWidgets.QSizePolicy.Preferred)
         rating_layout = QtWidgets.QHBoxLayout(self.rating_container)
         rating_layout.setContentsMargins(0, 0, 0, 0)
         rating_layout.setSpacing(5)
         rating_layout.addWidget(self.league)
         rating_layout.addWidget(self.rating)
-        rating_layout.addStretch(1)
 
         self.rank = QtWidgets.QLabel()
         self.winrate = QtWidgets.QLabel()
@@ -259,12 +298,8 @@ class AoEOverlay(OverlayWidget):
         self.initUI()
 
     def setup_as_overlay(self):
-        if settings.overlay_geometry is None:
-            self.setGeometry(0, 0, 700, 400)
-            sg = QtWidgets.QDesktopWidget().screenGeometry(0)
-            self.move(sg.width() - self.width() + 15, sg.top() - 20)
-        else:
-            self.setGeometry(*settings.overlay_geometry)
+        self.setGeometry(_default_overlay_rect())
+        _restore_saved_geometry(self)
 
         self.setWindowTitle('AoE IV: Overlay')
 
@@ -282,6 +317,7 @@ class AoEOverlay(OverlayWidget):
         self.playerlayout.setHorizontalSpacing(10)
         self.playerlayout.setAlignment(QtCore.Qt.AlignRight
                                        | QtCore.Qt.AlignTop)
+        self.playerlayout.setColumnStretch(1, 1)
         self.inner_frame.setLayout(self.playerlayout)
         self.update_style(settings.font_size)
 
@@ -333,7 +369,7 @@ class AoEOverlay(OverlayWidget):
 
     def update_style(self, font_size: int):
         self.setStyleSheet(
-            f"QLabel {{font-size: {font_size}pt; color: white }}"
+            f"QLabel {{font-size: {font_size}px; color: white }}"
             "QFrame#inner_frame"
             "{"
             "background: QLinearGradient("
@@ -344,12 +380,10 @@ class AoEOverlay(OverlayWidget):
             "stop: 1 rgba(0,0,0,1))"
             "}")
 
-        if self.isVisible():
-            self.show()
-
     def update_data(self, game_data: Dict[str, Any]):
         self.map.setText(game_data['map'])
-        [p.show(False) for p in self.players]
+        for player in self.players:
+            player.show(False)
 
         show_civ_stats = False
         for i, player in enumerate(game_data['players']):
@@ -374,11 +408,12 @@ class AoEOverlay(OverlayWidget):
 
     def save_geometry(self):
         """ Saves overlay geometry into settings"""
-        pos = self.pos()
-        settings.overlay_geometry = [
-            pos.x(), pos.y(), self.width(),
-            self.height()
-        ]
+        settings.overlay_geometry = bytes(self.saveGeometry().toBase64()).decode(
+            "ascii")
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.save_geometry()
+        super().closeEvent(event)
 
     def get_data(self) -> Dict[str, Any]:
         result = {"map": self.map.text(), "players": []}

@@ -1,3 +1,4 @@
+import ctypes
 import os
 import subprocess
 import sys
@@ -8,8 +9,7 @@ from typing import Type
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from overlay.email_log import send_email_log
-from overlay.helper_func import file_path, is_compiled, pyqt_wait
+from overlay.helper_func import file_path, pyqt_wait
 from overlay.logging_func import get_logger
 from overlay.settings import CONFIG_FOLDER, settings
 from overlay.tab_main import TabWidget
@@ -20,6 +20,72 @@ VERSION = "1.4.8"
 
 # Might or might not help
 os.environ["PYTHONIOENCODING"] = "utf-8"
+
+
+def _configure_windows_dpi_awareness():
+    if sys.platform != "win32":
+        return
+
+    if not hasattr(ctypes, "windll"):
+        return
+
+    # Follow Qt's normal high-DPI path on Windows and let the window system
+    # scale the UI per monitor.
+    try:
+        if ctypes.windll.user32.SetProcessDpiAwarenessContext(
+                ctypes.c_void_p(-4)):
+            return
+    except Exception:
+        pass
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except Exception:
+        pass
+
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+def _configure_high_dpi():
+    if hasattr(QtCore.Qt, "AA_EnableHighDpiScaling"):
+        QtWidgets.QApplication.setAttribute(
+            QtCore.Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(QtCore.Qt, "AA_UseHighDpiPixmaps"):
+        QtWidgets.QApplication.setAttribute(
+            QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
+    set_policy = getattr(QtGui.QGuiApplication,
+                         "setHighDpiScaleFactorRoundingPolicy", None)
+    policy_enum = getattr(QtCore.Qt, "HighDpiScaleFactorRoundingPolicy", None)
+    if set_policy is not None and policy_enum is not None:
+        set_policy(policy_enum.PassThrough)
+
+
+def _default_main_geometry() -> QtCore.QRect:
+    screen = QtGui.QGuiApplication.primaryScreen()
+    available = screen.availableGeometry() if screen else QtCore.QRect(
+        0, 0, 1920, 1080)
+    size = QtCore.QSize(min(settings.app_width, available.width()),
+                        min(settings.app_height, available.height()))
+    return QtWidgets.QStyle.alignedRect(QtCore.Qt.LeftToRight,
+                                        QtCore.Qt.AlignCenter, size,
+                                        available)
+
+
+def _restore_main_geometry(widget: QtWidgets.QWidget):
+    geometry = settings.app_geometry
+    if isinstance(geometry, str):
+        widget.restoreGeometry(
+            QtCore.QByteArray.fromBase64(geometry.encode("ascii")))
+
+
+def _save_main_geometry(widget: QtWidgets.QWidget):
+    settings.app_geometry = bytes(widget.saveGeometry().toBase64()).decode(
+        "ascii")
 
 
 def excepthook(exc_type: Type[BaseException], exc_value: Exception,
@@ -34,12 +100,13 @@ def excepthook(exc_type: Type[BaseException], exc_value: Exception,
     logger.exception("Unhandled exception!",
                      exc_info=(exc_type, exc_value, exc_tback))
 
-    # If compiled, send email log
-    # try:
-    #     if is_compiled() and settings.send_email_logs:
-    #         send_email_log(VERSION, exc_type, exc_value, exc_tback)
-    # except Exception:
-    #     logger.exception("Failed to send a log through email")
+    main_window = globals().get("Main")
+    if main_window is not None:
+        try:
+            _save_main_geometry(main_window)
+            main_window.centralWidget().close()
+        except Exception:
+            logger.exception("Failed to close windows after exception")
 
     # Try to save settings
     try:
@@ -69,9 +136,8 @@ class MainApp(QtWidgets.QMainWindow):
     def initUI(self):
         self.setWindowTitle(f"AoE IV: Overlay ({VERSION})")
         self.setWindowIcon(QtGui.QIcon(file_path('img/aoe4_sword_shield.ico')))
-        self.setGeometry(0, 0, settings.app_width, settings.app_height)
-        self.move(QtWidgets.QDesktopWidget().availableGeometry().center() -
-                  QtCore.QPoint(int(self.width() / 2), int(self.height() / 2)))
+        self.setGeometry(_default_main_geometry())
+        _restore_main_geometry(self)
 
         # Create central widget
         self.setCentralWidget(TabWidget(self, VERSION))
@@ -79,7 +145,6 @@ class MainApp(QtWidgets.QMainWindow):
         ### Create menu bar items
         menubar = self.menuBar()
         file_menu = menubar.addMenu('File')
-        # graphs_menu = menubar.addMenu('Graphs')
         settings_menu = menubar.addMenu('Settings')
         link_menu = menubar.addMenu('Links')
 
@@ -105,14 +170,6 @@ class MainApp(QtWidgets.QMainWindow):
         exitAction = QtWidgets.QAction(icon, 'Exit', self)
         exitAction.triggered.connect(QtWidgets.qApp.quit)
         file_menu.addAction(exitAction)
-
-        # Report crashes
-        # email_action = QtWidgets.QAction('Report crashes', self)
-        # email_action.setCheckable(True)
-        # email_action.setChecked(settings.send_email_logs)
-        # email_action.triggered.connect(lambda: setattr(
-        #     settings, "send_email_logs", not settings.send_email_logs))
-        # settings_menu.addAction(email_action)
 
         # Log matches
         mach_log_action = QtWidgets.QAction('Log match data', self)
@@ -166,29 +223,13 @@ class MainApp(QtWidgets.QMainWindow):
             partial(webbrowser.open, "https://aoe4world.com/"))
         link_menu.addAction(aoe4worldaction)
 
-        # Which graphs to show
-        # self.show_graph_actions = []
-        # for i in (1, 2, 3, 4):
-        #     action = QtWidgets.QAction(f'Show {i}v{i}', self)
-        #     self.show_graph_actions.append(action)
-        #     action.setCheckable(True)
-        #     action.setChecked(True)
-        #     action.changed.connect(
-        #         partial(self.centralWidget().graph_tab.change_plot_visibility,
-        #                 i - 1, action))
-        #     action.setChecked(settings.show_graph[str(i)])
-        #     graphs_menu.addAction(action)
-
-        # lastday = QtWidgets.QAction("Last 24h", self)
-        # lastday.setCheckable(True)
-        # lastday.changed.connect(
-        #     partial(self.centralWidget().graph_tab.limit_to_day, lastday))
-        # graphs_menu.addAction(lastday)
         self.show()
 
-    def closeEvent(self, _):
+    def closeEvent(self, event: QtGui.QCloseEvent):
         """Function called when closing the widget."""
+        _save_main_geometry(self)
         self.centralWidget().close()
+        super().closeEvent(event)
 
     def update_title(self, name: str):
         self.setWindowTitle(f"AoE IV: Overlay ({VERSION}) – {name}")
@@ -198,8 +239,7 @@ class MainApp(QtWidgets.QMainWindow):
             """ Give it some time to stop everything correctly"""
             settings.app_width = self.width()
             settings.app_height = self.height()
-            # for i, action in enumerate(self.show_graph_actions):
-            #     settings.show_graph[str(i + 1)] = action.isChecked()
+            _save_main_geometry(self)
             settings.save()
             self.centralWidget().stop_checking_api()
             pyqt_wait(1000)
@@ -209,6 +249,8 @@ class MainApp(QtWidgets.QMainWindow):
 
 if __name__ == '__main__':
     settings.load()
+    _configure_windows_dpi_awareness()
+    _configure_high_dpi()
     app = QtWidgets.QApplication(sys.argv)
     Main = MainApp()
     exit_event = app.exec_()

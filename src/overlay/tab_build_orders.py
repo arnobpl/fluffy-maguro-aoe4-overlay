@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+from typing import Optional
 
 import keyboard
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -13,6 +14,43 @@ from overlay.logging_func import get_logger
 from overlay.settings import settings
 
 logger = get_logger(__name__)
+
+
+def _primary_available_geometry() -> QtCore.QRect:
+    screen = QtGui.QGuiApplication.primaryScreen()
+    if screen is None:
+        return QtCore.QRect(0, 0, 1920, 1080)
+    return screen.availableGeometry()
+
+
+def _screen_for_point(point: QtCore.QPoint) -> Optional[QtGui.QScreen]:
+    screen_at = getattr(QtGui.QGuiApplication, "screenAt", None)
+    if screen_at is not None:
+        screen = screen_at(point)
+        if screen is not None:
+            return screen
+    return QtGui.QGuiApplication.primaryScreen()
+
+
+def _available_geometry_for_point(point: QtCore.QPoint) -> QtCore.QRect:
+    screen = _screen_for_point(point)
+    return screen.availableGeometry() if screen else _primary_available_geometry()
+
+
+def _default_upper_right_position() -> QtCore.QPoint:
+    available = _primary_available_geometry()
+    return QtCore.QPoint(available.x() + available.width() - 20,
+                         available.y() + 20)
+
+
+def _saved_upper_right_position() -> QtCore.QPoint:
+    position = settings.bo_upper_right_position
+    if not isinstance(position, list) or len(position) != 2:
+        return _default_upper_right_position()
+    try:
+        return QtCore.QPoint(int(position[0]), int(position[1]))
+    except (TypeError, ValueError):
+        return _default_upper_right_position()
 
 
 def get_age_image(age_id: int):
@@ -71,9 +109,10 @@ class BuildOrderOverlay(QtWidgets.QMainWindow):
         self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
 
         # remove the window title and stay always on top
-        self.setWindowFlags(QtCore.Qt.FramelessWindowHint
+        self.setWindowFlags(QtCore.Qt.Tool
+                            | QtCore.Qt.FramelessWindowHint
                             | QtCore.Qt.WindowStaysOnTopHint
-                            | QtCore.Qt.CoverWindow)
+                            )
 
         # color and opacity
         color_background = settings.bo_color_background
@@ -81,21 +120,6 @@ class BuildOrderOverlay(QtWidgets.QMainWindow):
             f'background-color: rgb({color_background[0]}, {color_background[1]}, {color_background[2]})'
         )
         self.setWindowOpacity(settings.bo_opacity)
-
-        # check that the upper right corner is inside the screen
-        screen_size = QtWidgets.QDesktopWidget().screenGeometry(-1)
-
-        if settings.bo_upper_right_position[0] >= screen_size.width():
-            logger.info(
-                f'Upper right corner X position set to {(screen_size.width() - 20)} (to stay inside screen).'
-            )
-            settings.bo_upper_right_position[0] = screen_size.width() - 20
-
-        if settings.bo_upper_right_position[1] >= screen_size.height():
-            logger.info(
-                f'Upper right corner Y position set to {(screen_size.height() - 40)} (to stay inside screen).'
-            )
-            settings.bo_upper_right_position[1] = screen_size.height() - 40
 
         self.update_position()  # update the position
 
@@ -207,37 +231,47 @@ class BuildOrderOverlay(QtWidgets.QMainWindow):
 
     def change_position_state(self):
         """Change the state from fixed position to window with moving position (and opposite)"""
+        geometry = QtCore.QRect(self.geometry())
         if self.fixed:  # fixed to moving
             self.fixed = False
             self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, False)
-            self.setWindowFlags(QtCore.Qt.WindowTitleHint
+            self.setWindowFlags(QtCore.Qt.Tool
+                                | QtCore.Qt.WindowTitleHint
                                 | QtCore.Qt.WindowStaysOnTopHint)
         else:  # moving to fixed
             self.fixed = True
-            # offset added to take into account the difference of the window size with titlebar
-            self.save_upper_right_position(offset_x=8, offset_y=31)
             self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
-            self.setWindowFlags(QtCore.Qt.FramelessWindowHint
+            self.setWindowFlags(QtCore.Qt.Tool
+                                | QtCore.Qt.FramelessWindowHint
                                 | QtCore.Qt.WindowStaysOnTopHint)
         self.show()
+        self.setGeometry(geometry)
+        if self.fixed:
+            self.save_upper_right_position()
 
-    def save_upper_right_position(self, offset_x: int = 0, offset_y: int = 0):
-        """Save of the upper right corner position
-
-        Parameters
-        ----------
-        offset_x    pixels offset to add on the X axis
-        offset_y    pixels offset to add on the Y axis
-        """
+    def save_upper_right_position(self):
+        """Save the upper right corner position of the client geometry."""
+        rect = self.geometry()
         settings.bo_upper_right_position = [
-            self.x() + self.width() + offset_x,
-            self.y() + offset_y
+            rect.right() + 1,
+            rect.top()
         ]
 
     def update_position(self):
         """Update the position to stick to the saved upper right corner"""
-        self.move(settings.bo_upper_right_position[0] - self.width(),
-                  settings.bo_upper_right_position[1])
+        saved_top_right = _saved_upper_right_position()
+        available = _available_geometry_for_point(saved_top_right -
+                                                  QtCore.QPoint(1, 0))
+        max_left = max(available.left(), available.right() - self.width() + 1)
+        max_top = max(available.top(), available.bottom() - self.height() + 1)
+        left = min(max(saved_top_right.x() - self.width(), available.left()),
+                   max_left)
+        top = min(max(saved_top_right.y(), available.top()), max_top)
+        self.move(left, top)
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        self.save_upper_right_position()
+        super().closeEvent(event)
 
 
 def init_hotkey(hotkey_str: str, hotkey_edit: CustomKeySequenceEdit,
@@ -352,10 +386,11 @@ class BoTab(QtWidgets.QWidget):
 
         self.update_overlay()  # update the BO overlay
 
-    def closeEvent(self, _):
+    def closeEvent(self, event: QtGui.QCloseEvent):
         """Function called when closing the widget."""
         self.save_unchecked_state()
         self.overlay.close()
+        super().closeEvent(event)
 
     def init_hotkeys(self):
         """Initialize all the hotkeys"""
