@@ -5,6 +5,12 @@
 
 ![Screenshot](https://i.imgur.com/eN2zJ3c.jpg)
 
+# Fork highlights
+* League icons are shown next to player Elo in the live overlay.
+* High-DPI handling and window geometry saving are improved for the main app and overlays.
+* Build order overlay positioning behaves more reliably, especially across screen changes.
+* Match history shows color-coded `WIN` / `LOSS` results.
+
 # What does the app do?
 * Shows information about players you are in match with.
 * Provides additional player statistics in-app.
@@ -37,12 +43,12 @@ API calls are done through [AoE4World.com](https://aoe4world.com/). For build or
 * Set up the hotkey for showing/hiding overlay.
   * Overlay will be automatically shown when a new game starts (or app starts).
 
-→ [Video tutorial](https://youtu.be/R5t9P4-tMxg) for app setup and using buildorders.
+→ [Video tutorial](https://youtu.be/R5t9P4-tMxg) for app setup and using build orders.
 
 → *Note: To update the app delete the app folder and extract the new archive elsewhere.*
   
 # Build orders
-  * Two build orders types are available:
+  * Two build order types are available:
     * *Simple TXT*
     * *Illustrated* with resources distribution and game pictures (+ BO step selection).
   * Add or remove build orders with **Add/Remove build order** (write the content on the left panel, and the title on the top of the right panel).
@@ -112,7 +118,7 @@ To use the custom streaming overlay simply drag the `overlay.html` file to OBS o
 
 ![Screenshot](https://i.imgur.com/BK9AC6h.png)
 
-If drag & drop doesn't work, add new source to your scene manually. The source type will be `Browser` and point to a local file `overlay.html`.
+If drag & drop doesn't work, add a new source to your scene manually. The source type will be `Browser` and point to a local file `overlay.html`.
 
 Overlay active:
 
@@ -132,7 +138,9 @@ Or change values to something completely different
 
 1. **Overlay position and font size** can be changed in the app.
 
-2. **Build order** (BO) font, images size, position and hotkeys can be changed in the app. Other attributes can also be customized in `config.json` (to find the file click `File/config & logs` in the app). You have to close the app before making changes to the config file. What can be changed:
+    This fork also saves the main window and overlay geometry more reliably between launches.
+
+2. **Build order** (BO) font, images size, position and hotkeys can be changed in the app. Other attributes can also be customized in `config.json` (to find the file, click `File` -> `Config/logs` in the app). You have to close the app before making changes to the config file. What can be changed:
 
     `"bo_show_title": true` : true to show the BO title, false otherwise
 
@@ -152,7 +160,7 @@ Or change values to something completely different
 
     `"bo_color_background": [30, 30, 30]` : background RGB color
 
-    `"bo_font_police": 'Arial'` : police font
+    `"bo_font_police": 'Arial'` : font family
 
     `"bo_opacity": 0.75` : opacity of the window
 
@@ -183,7 +191,7 @@ Or change values to something completely different
     "civ_stats_color": "#BC8AEA",
     ```
 
-5. **Streaming overlay** customization can be done via `custom.css` and `custom.js` in the `html` folder in app directory. These files will not be overridden with an app update. Look at `main.css` to see what you can change. In `custom.js` you can define this function that runs after each update.
+5. **Streaming overlay** customization can be done via `custom.css` and `custom.js` in the `src/html` folder in the app directory. These files will not be overridden with an app update. Look at `main.css` to see what you can change. In `custom.js` you can define this function that runs after each update.
 
     ```javascript
     function custom_func(data) {
