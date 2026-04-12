@@ -58,7 +58,7 @@ class InnerPlayer(PlayerWidget):
         rating_layout.addWidget(self.rating)
         rating_layout.addStretch(1)
 
-        self.country = QtWidgets.QLabel()
+        self.create_country_widget()
         self.rank = QtWidgets.QLineEdit()
         self.winrate = QtWidgets.QLineEdit()
         self.wins = QtWidgets.QLineEdit()
@@ -118,20 +118,9 @@ class InnerPlayer(PlayerWidget):
         self.connect_to_function(self.callable)
 
     def get_data(self) -> Dict[str, Any]:
-        # Override to get civ from flag
-        return {
-            'civ': self.flag.currentText(),
-            'name': self.name.text(),
-            'team': self.team,
-            'rating': self.rating.text(),
-            'rank': self.rank.text(),
-            'wins': self.wins.text(),
-            'losses': self.losses.text(),
-            'winrate': self.winrate.text(),
-            'civ_games': self.civ_games.text(),
-            'civ_winrate': self.civ_winrate.text(),
-            'civ_win_length_median': self.civ_median_wins.text(),
-        }
+        data = super().get_data()
+        data['civ'] = self.flag.currentText()
+        return data
 
 
 class InnerOverlay(AoEOverlay):

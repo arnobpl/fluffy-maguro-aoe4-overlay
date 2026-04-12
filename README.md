@@ -7,6 +7,7 @@
 
 # Fork highlights
 * League icons are shown next to player Elo in the live overlay.
+* Country flags in the live overlay include text labels.
 * High-DPI handling and window geometry saving are improved for the main app and overlays.
 * Build order overlay positioning behaves more reliably, especially across screen changes.
 * Match history shows color-coded `WIN` / `LOSS` results.

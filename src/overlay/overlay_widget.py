@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from typing import Any, Dict, Optional
 
@@ -59,8 +60,12 @@ def set_pixmap(civ: str, widget: QtWidgets.QWidget):
     PIXMAP_CACHE[civ] = pixmap
     widget.setPixmap(pixmap)
 
+
 def set_country_flag(country_code: str, widget: QtWidgets.QLabel):
     """ Sets country flag to a widget. Handles caching."""
+    if not country_code:
+        widget.clear()
+        return
     if country_code in PIXMAP_CACHE:
         widget.setPixmap(PIXMAP_CACHE[country_code])
         return
@@ -75,6 +80,31 @@ def _pixmap_cache_key(path: str, size: QtCore.QSize) -> str:
     return f"{path}|{size.width()}x{size.height()}"
 
 
+def _normalize_country_code(country_code: str) -> str:
+    return (country_code or "").strip().lower()
+
+
+@lru_cache(maxsize=1)
+def _country_names_by_code() -> Dict[str, str]:
+    country_names: Dict[str, str] = {}
+    locales = QtCore.QLocale.matchingLocales(QtCore.QLocale.AnyLanguage,
+                                             QtCore.QLocale.AnyScript,
+                                             QtCore.QLocale.AnyCountry)
+    for locale in locales:
+        locale_name = locale.name().split("_")
+        if len(locale_name) < 2:
+            continue
+        country_code = locale_name[-1].lower()
+        if len(country_code) != 2:
+            continue
+        country = locale.country()
+        if country == QtCore.QLocale.AnyCountry:
+            continue
+        country_names.setdefault(country_code,
+                                 QtCore.QLocale.countryToString(country))
+    return country_names
+
+
 def set_league_icon(icon_path: str, widget: QtWidgets.QLabel):
     """Sets league pixmap to a widget. Handles caching and smooth scaling."""
     key = _pixmap_cache_key(icon_path, widget.size())
@@ -86,6 +116,14 @@ def set_league_icon(icon_path: str, widget: QtWidgets.QLabel):
                            QtCore.Qt.SmoothTransformation)
     PIXMAP_CACHE[key] = pixmap
     widget.setPixmap(pixmap)
+
+
+def country_name(country_code: str) -> str:
+    """Best-effort human-readable label for a 2-letter country code."""
+    normalized = _normalize_country_code(country_code)
+    if not normalized:
+        return ""
+    return _country_names_by_code().get(normalized, normalized.upper())
 
 
 LEAGUE_ELO_RANGES = (
@@ -178,9 +216,7 @@ class PlayerWidget:
         # Separated so this can be changed in a child inner overlay for editing
         self.flag = QtWidgets.QLabel()
         self.flag.setFixedSize(QtCore.QSize(60, 30))
-        self.country = QtWidgets.QLabel()
-        self.country.setFixedSize(QtCore.QSize(25,14))
-        self.country.setScaledContents(True)
+        self.create_country_widget()
 
         self.name = QtWidgets.QLabel()
 
@@ -209,6 +245,22 @@ class PlayerWidget:
         self.civ_winrate = QtWidgets.QLabel()
         self.civ_median_wins = QtWidgets.QLabel()
 
+    def create_country_widget(self):
+        self.country_code = ""
+        self.country_flag = QtWidgets.QLabel()
+        self.country_flag.setFixedSize(QtCore.QSize(25, 14))
+        self.country_text = QtWidgets.QLabel()
+        self.country_text.setAlignment(QtCore.Qt.AlignLeft
+                                       | QtCore.Qt.AlignVCenter)
+        self.country = QtWidgets.QWidget()
+        self.country.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
+                                   QtWidgets.QSizePolicy.Preferred)
+        country_layout = QtWidgets.QHBoxLayout(self.country)
+        country_layout.setContentsMargins(0, 0, 0, 0)
+        country_layout.setSpacing(6)
+        country_layout.addWidget(self.country_flag)
+        country_layout.addWidget(self.country_text)
+
 
     def show(self, show: bool = True):
         self.visible = show
@@ -234,7 +286,9 @@ class PlayerWidget:
         set_pixmap(self.civ, self.flag)
 
     def update_country_flag(self, country_code: str):
-        set_country_flag(country_code, self.country)
+        self.country_code = _normalize_country_code(country_code)
+        set_country_flag(self.country_code, self.country_flag)
+        self.country_text.setText(country_name(self.country_code))
 
     def update_player(self, player_data: Dict[str, Any]):
         # Flag
@@ -275,7 +329,7 @@ class PlayerWidget:
             'civ': self.civ,
             'name': self.name.text(),
             'team': self.team,
-            'country': self.country.text(),
+            'country': self.country_code,
             'rating': self.rating.text(),
             'rank': self.rank.text(),
             'wins': self.wins.text(),
