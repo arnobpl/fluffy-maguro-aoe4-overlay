@@ -31,6 +31,7 @@ API calls are done through [AoE4World.com](https://aoe4world.com/). For build or
 **Windows**
 * Download and extract the archive.
 * Run `AoE4_Overlay.exe`.
+* If you cloned the source instead, run `run_app.bat` once and it will create a local `venv` and install the Python dependencies automatically.
 
 **Linux** 
 * ```cd ~/Documents```
